@@ -1,7 +1,8 @@
-use ndarray::{ArrayBase, Data, Dimension, Zip};
+use ndarray::linalg::Dot;
+use ndarray::{Array, ArrayBase, Data, Dimension, Zip};
 use num_traits::{Signed, ToPrimitive};
 use std::convert::Into;
-use std::ops::AddAssign;
+use std::ops::{AddAssign, Div, Mul};
 
 use crate::errors::MultiInputError;
 
@@ -120,6 +121,26 @@ where
     where
         A: Clone + PartialOrd + Signed,
         T: Data<Elem = A>;
+
+    /// Computes the [Cosine similarity] between `self` and `other`.
+    ///
+    /// ```text
+    /// (A.B)/(|A||B|)
+    /// ```
+    ///
+    /// where `self` is `A` and `other` is `B`.
+    ///
+    /// The following **errors** may be returned:
+    ///
+    /// * `MultiInputError::EmptyInput` if `self` is empty
+    /// * `MultiInputError::ShapeMismatch` if `self` and `other` don't have the same shape
+    ///
+    /// [Cosine similarity]: https://en.wikipedia.org/wiki/Cosine_similarity
+    fn cosine_similarity<T>(&self, other: &ArrayBase<T, D>) -> Result<A, MultiInputError>
+    where
+        A: AddAssign + Div + Mul + Clone + Signed,
+        T: Data<Elem = A>,
+        Self: Dot<ArrayBase<T, D>>;
 
     /// Computes the [mean absolute error] between `self` and `other`.
     ///
@@ -318,6 +339,23 @@ where
         });
 
         Ok(max)
+    }
+
+    fn cosine_similarity<T>(&self, other: &ArrayBase<T, D>) -> Result<A, MultiInputError>
+    where
+        A: AddAssign + Div + Mul + Clone + Signed,
+        T: Data<Elem = A>,
+        Self: Dot<ArrayBase<T, D>, Output = A>,
+    {
+        return_err_if_empty!(self);
+        return_err_unless_same_shape!(self, other);
+        let numerator = self.dot(other);
+        let zeros: Array<A, D> = ArrayBase::zeros(self.dim());
+        let lhs = self.sq_l2_dist(&zeros)?;
+        let rhs = other.sq_l2_dist(&zeros)?;
+        let denominator = lhs * rhs;
+
+        Ok(numerator / denominator)
     }
 
     fn mean_abs_err<T>(&self, other: &ArrayBase<T, D>) -> Result<f64, MultiInputError>
